@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import contextlib
 import errno
+import glob
 import json
 import multiprocessing
 import os
@@ -42,13 +43,21 @@ class Vex (object):
         self.make_vexdir()
         self.dnlds = os.path.join(self.HOME, 'downloads')
         self.build = os.path.join(self.HOME, 'build')
-        self.local = os.path.join(self.HOME, 'local')
+        self.bin = os.path.join(self.HOME, 'bin')
         self.otpver, self.exver = self.read_version_file()
+
+    def set_executable_links(self, otpver, exver):
+        with self.change_directory(self.bin):
+            self.symlink_executables(os.path.join(self.build, otpver, 'local', 'bin'))
+            self.symlink_executables(os.path.join(self.build, otpver, exver, 'local', 'bin'))
+        self.write_version_file(otpver, exver)
 
     ## ERLANG METHODS
 
     def download_erlang(self, version=LATEST):
         outfile, url = self.interpret_version('erlang', version)
+        if os.path.isfile(outfile):
+            return outfile
         tarfile = self.download(outfile, url)
         return tarfile
 
@@ -61,8 +70,12 @@ class Vex (object):
         except OSError as exc:
             if exc.errno != errno.EEXIST:
                 raise
-        subprocess.check_call(['tar', 'xzvf', tarfile, '--directory', outdir])
 
+        # return if Erlang has already been installed
+        if glob.glob(os.path.join(outdir, 'local', '*')):
+            return
+
+        subprocess.check_call(['tar', 'xzvf', tarfile, '--directory', outdir])
         build_dir = os.path.join(outdir, 'otp-OTP-' + version)
         prefix_path = os.path.join(outdir, 'local')
         with self.change_directory(build_dir):
@@ -76,17 +89,53 @@ class Vex (object):
 
     def download_elixir(self, version=LATEST):
         outfile, url = self.interpret_version('elixir', version)
+        if os.path.isfile(outfile):
+            return outfile
         tarfile = self.download(outfile, url)
         return tarfile
 
+    def build_elixir(self, version, otp_version, jfactor):
+        self.ensure_erlang(otp_version, jfactor)
+        tarfile = os.path.join(self.dnlds, 'elixir-' + version + '.tar')
+        outdir = os.path.join(self.build, otp_version, version)
+        try:
+            os.mkdir(outdir)
+            os.mkdir(os.path.join(outdir, 'local'))
+            os.mkdir(os.path.join(outdir, 'local', 'bin'))
+        except OSError as exc:
+            if exc.errno != errno.EEXIST:
+                raise
+
+        # return if Elixir has already been installed
+        if glob.glob(os.path.join(outdir, 'local', 'bin', '*')):
+            return
+
+        subprocess.check_call(['tar', 'xzvf', tarfile, '--directory', outdir])
+        build_dir = os.path.join(outdir, 'elixir-' + version)
+        otp_path = os.path.join(self.build, otp_version, 'local', 'bin')
+        with self.change_directory(build_dir):
+            os.environ['PATH'] = otp_path + ':' + os.environ['PATH']
+            subprocess.check_call(['gmake', '-j%d' % jfactor])
+
+        with self.change_directory(os.path.join(outdir, 'local', 'bin')):
+            for tool in ('elixir', 'elixirc', 'iex', 'mix'):
+                os.symlink(os.path.join(build_dir, 'bin', tool), tool)
+
     ## PRIVATE
+
+    def symlink_executables(self, directory):
+        for exe in glob.glob(os.path.join(directory, '*')):
+            name = os.path.basename(exe)
+            if os.path.islink(name):
+                os.remove(name)
+            os.symlink(exe, name)
 
     def make_vexdir(self):
         try:
             os.mkdir(self.HOME)
             os.mkdir(os.path.join(self.HOME, 'downloads'))
             os.mkdir(os.path.join(self.HOME, 'build'))
-            os.mkdir(os.path.join(self.HOME, 'local'))
+            os.mkdir(os.path.join(self.HOME, 'bin'))
 
         except OSError as exc:
             if exc.errno != errno.EEXIST:
@@ -96,8 +145,8 @@ class Vex (object):
         version_file = os.path.join(self.HOME, 'version.json')
         try:
             with open(version_file, 'r') as f:
-                json = json.load(f)
-            return json['erlang'], json['elixir']
+                result = json.load(f)
+            return result['erlang'], result['elixir']
 
         except IOError:
             return None, None
@@ -137,10 +186,16 @@ class Vex (object):
         finally:
             os.chdir(prev)
 
+    def ensure_erlang(self, version, jfactor):
+        self.download_erlang(version)
+        self.build_erlang(version, jfactor)
+
 def main():
-    #Vex().download_erlang('17.5.1')
-    #Vex().download_elixir(Vex.LATEST)
-    Vex().build_erlang('17.5.1')
+    Vex().download_erlang('17.5.1')
+    Vex().download_elixir(Vex.LATEST)
+    Vex().build_erlang('17.5.1', multiprocessing.cpu_count())
+    Vex().build_elixir('1.0.4', '17.5.1', multiprocessing.cpu_count())
+    Vex().set_executable_links('17.5.1', '1.0.4')
 
 if __name__ == '__main__':
     main()
