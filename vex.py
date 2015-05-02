@@ -2,9 +2,12 @@
 
 from __future__ import print_function
 
+import contextlib
 import errno
 import json
+import multiprocessing
 import os
+import subprocess
 import urllib2
 
 class Vex (object):
@@ -42,21 +45,39 @@ class Vex (object):
         self.local = os.path.join(self.HOME, 'local')
         self.otpver, self.exver = self.read_version_file()
 
+    ## ERLANG METHODS
+
     def download_erlang(self, version=LATEST):
         outfile, url = self.interpret_version('erlang', version)
         tarfile = self.download(outfile, url)
         return tarfile
 
+    def build_erlang(self, version, jfactor):
+        tarfile = os.path.join(self.dnlds, 'otp-OTP-' + version + '.tar')
+        outdir = os.path.join(self.build, version)
+        try:
+            os.mkdir(outdir)
+            os.mkdir(os.path.join(outdir, 'local'))
+        except OSError as exc:
+            if exc.errno != errno.EEXIST:
+                raise
+        subprocess.check_call(['tar', 'xzvf', tarfile, '--directory', outdir])
+
+        build_dir = os.path.join(outdir, 'otp-OTP-' + version)
+        prefix_path = os.path.join(outdir, 'local')
+        with self.change_directory(build_dir):
+            os.environ['ERL_TOP'] = build_dir
+            subprocess.check_call(['./otp_build', 'autoconf'])
+            subprocess.check_call(['./configure', '--prefix=%s' % prefix_path])
+            subprocess.check_call(['gmake', '-j%d' % jfactor])
+            subprocess.check_call(['gmake', 'install'])
+
+    ## ELIXIR METHODS
+
     def download_elixir(self, version=LATEST):
         outfile, url = self.interpret_version('elixir', version)
         tarfile = self.download(outfile, url)
         return tarfile
-
-    def build_erlang(self, srcdir):
-        pass
-
-    def build_elixir(self, srcdir):
-        pass
 
     ## PRIVATE
 
@@ -107,9 +128,19 @@ class Vex (object):
             f.write(response.read())
         return outfile
 
+    @contextlib.contextmanager
+    def change_directory(self, new_dir):
+        prev = os.getcwd()
+        os.chdir(new_dir)
+        try:
+            yield
+        finally:
+            os.chdir(prev)
+
 def main():
-    Vex().download_erlang('17.5.1')
-    Vex().download_elixir(Vex.LATEST)
+    #Vex().download_erlang('17.5.1')
+    #Vex().download_elixir(Vex.LATEST)
+    Vex().build_erlang('17.5.1')
 
 if __name__ == '__main__':
     main()
