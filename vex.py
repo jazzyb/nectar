@@ -6,7 +6,6 @@ import contextlib
 import errno
 import glob
 import json
-import multiprocessing
 import os
 import subprocess
 import urllib2
@@ -52,6 +51,23 @@ class Vex (object):
             self.symlink_executables(os.path.join(self.build, otpver, exver, 'local', 'bin'))
         self.write_version_file(otpver, exver)
 
+    def list_versions(self):
+        print(' \tERLANG\t|\tELIXIR')
+        print(' \t------\t|\t------')
+        otpvers = set(map(lambda x: x[0], self.VERSIONS['erlang']))
+        exvers = set(map(lambda x: x[0], self.VERSIONS['elixir']))
+        for otp_path in sorted(glob.glob(os.path.join(self.build, '*'))):
+            otpver = os.path.basename(otp_path)
+            if otpver in otpvers:
+                for elixir in sorted(glob.glob(os.path.join(otp_path, '*'))):
+                    exver = os.path.basename(elixir)
+                    if exver in exvers:
+                        if exver == self.exver and otpver == self.otpver:
+                            flag = '*'
+                        else:
+                            flag = ' '
+                        print('%s\t%s\t|\t%s' % (flag, otpver, exver))
+
     ## ERLANG METHODS
 
     def download_erlang(self, version=LATEST):
@@ -62,6 +78,8 @@ class Vex (object):
         return tarfile
 
     def build_erlang(self, version, jfactor):
+        if version == self.LATEST:
+            version = self.VERSIONS['erlang'][-1][0]
         tarfile = os.path.join(self.dnlds, 'otp-OTP-' + version + '.tar')
         outdir = os.path.join(self.build, version)
         try:
@@ -95,6 +113,11 @@ class Vex (object):
         return tarfile
 
     def build_elixir(self, version, otp_version, jfactor):
+        if version == self.LATEST:
+            version = self.VERSIONS['elixir'][-1][0]
+        if otp_version == self.LATEST:
+            otp_version = self.VERSIONS['erlang'][-1][0]
+
         self.ensure_erlang(otp_version, jfactor)
         tarfile = os.path.join(self.dnlds, 'elixir-' + version + '.tar')
         outdir = os.path.join(self.build, otp_version, version)
@@ -190,12 +213,58 @@ class Vex (object):
         self.download_erlang(version)
         self.build_erlang(version, jfactor)
 
-def main():
-    Vex().download_erlang('17.5.1')
-    Vex().download_elixir(Vex.LATEST)
-    Vex().build_erlang('17.5.1', multiprocessing.cpu_count())
-    Vex().build_elixir('1.0.4', '17.5.1', multiprocessing.cpu_count())
-    Vex().set_executable_links('17.5.1', '1.0.4')
+def options():
+    usage = '%(prog)s [help | list | install | use] <arguments>'
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument('--otp-version', default='latest', help='Erlang version')
+    parser.add_argument('--elixir-version', default='latest', help='Elixir version')
+    parser.add_argument('--jobs', default=multiprocessing.cpu_count(), type=int, help='Number of build jobs to run in parallel')
+    return parser
+
+def usage(parser):
+    parser.print_help()
+
+def list_versions():
+    Vex().list_versions()
+
+def install(otp_version, elixir_version, jobs):
+    vex = Vex()
+    vex.download_erlang(otp_version)
+    vex.download_elixir(elixir_version)
+    vex.build_elixir(elixir_version, otp_version, jobs)
+
+def use(otp_version, elixir_version):
+    vex = Vex()
+    vex.set_executable_links(otp_version, elixir_version)
+
+def main(command, argv):
+    parser = options()
+    args = parser.parse_args(argv[1:])
+
+    if command == 'help':
+        usage(parser)
+    elif command == 'list':
+        list_versions()
+    elif command == 'install':
+        install(args.otp_version, args.elixir_version, args.jobs)
+    elif command == 'use':
+        use(args.otp_version, args.elixir_version)
+    else:
+        print('%s: error: unknown command', sys.argv[0])
+        usage()
+        sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    import argparse
+    import multiprocessing
+    import sys
+
+    if len(sys.argv) < 2:
+        print('%s: error: must use one of the following commands' % sys.argv[0])
+        print('    help\n'
+              '    list\n'
+              '    install\n'
+              '    use')
+        sys.exit(1)
+
+    main(sys.argv.pop(1), sys.argv)
