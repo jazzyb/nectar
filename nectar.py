@@ -10,7 +10,7 @@ import os
 import subprocess
 import urllib2
 
-class Vex (object):
+class Nectar (object):
     VERSIONS = {
         'erlang': [
             ('17.3',   'https://github.com/erlang/otp/archive/OTP-17.3.tar.gz'),
@@ -36,10 +36,10 @@ class Vex (object):
 
     LATEST = 'latest'
 
-    HOME = os.path.join(os.path.expanduser('~'), '.vex')
+    HOME = os.path.join(os.path.expanduser('~'), '.nectar')
 
     def __init__(self):
-        self.make_vexdir()
+        self.make_nectar_dir()
         self.dnlds = os.path.join(self.HOME, 'downloads')
         self.build = os.path.join(self.HOME, 'build')
         self.bin = os.path.join(self.HOME, 'bin')
@@ -77,7 +77,7 @@ class Vex (object):
         tarfile = self.download(outfile, url)
         return tarfile
 
-    def build_erlang(self, version, jfactor):
+    def build_erlang(self, version, jobs):
         if version == self.LATEST:
             version = self.VERSIONS['erlang'][-1][0]
         tarfile = os.path.join(self.dnlds, 'otp-OTP-' + version + '.tar')
@@ -100,7 +100,7 @@ class Vex (object):
             os.environ['ERL_TOP'] = build_dir
             subprocess.check_call(['./otp_build', 'autoconf'])
             subprocess.check_call(['./configure', '--prefix=%s' % prefix_path])
-            subprocess.check_call(['gmake', '-j%d' % jfactor])
+            subprocess.check_call(['gmake', '-j%d' % jobs])
             subprocess.check_call(['gmake', 'install'])
 
     ## ELIXIR METHODS
@@ -112,13 +112,13 @@ class Vex (object):
         tarfile = self.download(outfile, url)
         return tarfile
 
-    def build_elixir(self, version, otp_version, jfactor):
+    def build_elixir(self, version, otp_version, jobs):
         if version == self.LATEST:
             version = self.VERSIONS['elixir'][-1][0]
         if otp_version == self.LATEST:
             otp_version = self.VERSIONS['erlang'][-1][0]
 
-        self.ensure_erlang(otp_version, jfactor)
+        self.ensure_erlang(otp_version, jobs)
         tarfile = os.path.join(self.dnlds, 'elixir-' + version + '.tar')
         outdir = os.path.join(self.build, otp_version, version)
         try:
@@ -138,7 +138,7 @@ class Vex (object):
         otp_path = os.path.join(self.build, otp_version, 'local', 'bin')
         with self.change_directory(build_dir):
             os.environ['PATH'] = otp_path + ':' + os.environ['PATH']
-            subprocess.check_call(['gmake', '-j%d' % jfactor])
+            subprocess.check_call(['gmake', '-j%d' % jobs])
 
         with self.change_directory(os.path.join(outdir, 'local', 'bin')):
             for tool in ('elixir', 'elixirc', 'iex', 'mix'):
@@ -153,7 +153,7 @@ class Vex (object):
                 os.remove(name)
             os.symlink(exe, name)
 
-    def make_vexdir(self):
+    def make_nectar_dir(self):
         try:
             os.mkdir(self.HOME)
             os.mkdir(os.path.join(self.HOME, 'downloads'))
@@ -209,9 +209,9 @@ class Vex (object):
         finally:
             os.chdir(prev)
 
-    def ensure_erlang(self, version, jfactor):
+    def ensure_erlang(self, version, jobs):
         self.download_erlang(version)
-        self.build_erlang(version, jfactor)
+        self.build_erlang(version, jobs)
 
 def options():
     usage = '%(prog)s [help | list | install | use] <arguments>'
@@ -225,17 +225,17 @@ def usage(parser):
     parser.print_help()
 
 def list_versions():
-    Vex().list_versions()
+    Nectar().list_versions()
 
 def install(otp_version, elixir_version, jobs):
-    vex = Vex()
-    vex.download_erlang(otp_version)
-    vex.download_elixir(elixir_version)
-    vex.build_elixir(elixir_version, otp_version, jobs)
+    nectar = Nectar()
+    nectar.download_erlang(otp_version)
+    nectar.download_elixir(elixir_version)
+    nectar.build_elixir(elixir_version, otp_version, jobs)
 
 def use(otp_version, elixir_version):
-    vex = Vex()
-    vex.set_executable_links(otp_version, elixir_version)
+    nectar = Nectar()
+    nectar.set_executable_links(otp_version, elixir_version)
 
 def main(command, argv):
     parser = options()
