@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+from nectar import NectarVM
+
+def options():
+    usage = '%(prog)s [help | list | install | use] <arguments>'
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument('--otp-version', default='latest', help='Erlang version')
+    parser.add_argument('--elixir-version', default='latest', help='Elixir version')
+    parser.add_argument('--jobs', default=multiprocessing.cpu_count(), type=int, help='Number of build jobs to run in parallel')
+    return parser
+
+def usage(parser):
+    parser.print_help()
+
+def list_versions():
+    NectarVM().list_versions()
+
+def install(otp_version, elixir_version, jobs):
+    nectar = NectarVM()
+    nectar.download_erlang(otp_version)
+    nectar.download_elixir(elixir_version)
+    nectar.build_elixir(elixir_version, otp_version, jobs)
+
+def use(otp_version, elixir_version):
+    nectar = NectarVM()
+    nectar.set_executable_links(otp_version, elixir_version)
+
+def main(command, argv):
+    parser = options()
+    args = parser.parse_args(argv[1:])
+
+    if command == 'help':
+        usage(parser)
+    elif command == 'list':
+        list_versions()
+    elif command == 'install':
+        install(args.otp_version, args.elixir_version, args.jobs)
+    elif command == 'use':
+        use(args.otp_version, args.elixir_version)
+    else:
+        print('%s: error: unknown command', sys.argv[0])
+        usage()
+        sys.exit(1)
+
+if __name__ == '__main__':
+    import argparse
+    import multiprocessing
+    import sys
+
+    if len(sys.argv) < 2:
+        print('%s: error: must use one of the following commands' % sys.argv[0])
+        print('    help\n'
+              '    list\n'
+              '    install\n'
+              '    use')
+        sys.exit(1)
+
+    main(sys.argv.pop(1), sys.argv)
