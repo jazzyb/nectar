@@ -4,7 +4,7 @@ from __future__ import print_function
 from nectar import VersionManager
 
 def options():
-    usage = '%(prog)s [help | list | install | use] <arguments>'
+    usage = '%(prog)s [help | list | install | use | remove] <arguments>'
     parser = argparse.ArgumentParser(usage=usage)
     parser.add_argument('-o', '--otp-version',
                         default = VersionManager.OTP_LATEST,
@@ -16,6 +16,14 @@ def options():
                         default = multiprocessing.cpu_count(),
                         type = int,
                         help = 'Number of build jobs to run in parallel')
+    parser.add_argument('-f', '--force',
+                        default = False,
+                        action = 'store_true',
+                        help = 'Force the removal of an OTP directory')
+    parser.add_argument('-p', '--purge',
+                        default = False,
+                        action = 'store_true',
+                        help = 'Remove the source tarfile')
     return parser
 
 def usage(parser):
@@ -34,6 +42,10 @@ def use(otp_version, elixir_version):
     nectar = VersionManager()
     nectar.set_executable_links(otp_version, elixir_version)
 
+def remove(otp_version, elixir_version, force, purge):
+    nectar = VersionManager()
+    nectar.remove_elixir(elixir_version, otp_version, purge=purge)
+
 def main(command, argv):
     parser = options()
     args = parser.parse_args(argv[1:])
@@ -46,6 +58,8 @@ def main(command, argv):
         install(args.otp_version, args.elixir_version, args.jobs)
     elif command == 'use':
         use(args.otp_version, args.elixir_version)
+    elif command == 'remove':
+        remove(args.otp_version, args.elixir_version, args.force, args.purge)
     else:
         print('%s: error: unknown command', sys.argv[0])
         usage()
@@ -61,7 +75,8 @@ if __name__ == '__main__':
         print('    help\n'
               '    list\n'
               '    install\n'
-              '    use')
+              '    use\n'
+              '    remove')
         sys.exit(1)
 
     main(sys.argv.pop(1), sys.argv)
