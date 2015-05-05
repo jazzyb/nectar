@@ -1,14 +1,19 @@
 from __future__ import print_function
 
 import contextlib
+import datetime
 import errno
 import glob
 import json
 import os
+import platform
 import subprocess
 import urllib2
 
-class NectarVM (object):
+class BadVersion (Exception):
+    pass
+
+class VersionManager (object):
     VERSIONS = {
         'erlang': [
             ('17.3',   'https://github.com/erlang/otp/archive/OTP-17.3.tar.gz'),
@@ -32,7 +37,8 @@ class NectarVM (object):
         ]
     }
 
-    LATEST = 'latest'
+    OTP_LATEST = VERSIONS['erlang'][-1][0]
+    EX_LATEST = VERSIONS['elixir'][-1][0]
 
     HOME = os.path.join(os.path.expanduser('~'), '.nectar')
 
@@ -41,7 +47,10 @@ class NectarVM (object):
         self.dnlds = os.path.join(self.HOME, 'downloads')
         self.build = os.path.join(self.HOME, 'build')
         self.bin = os.path.join(self.HOME, 'bin')
+        self.logs = os.path.join(self.HOME, 'logs')
+        self.logfile = os.path.join(self.logs, datetime.datetime.now().isoformat() + '.log')
         self.otpver, self.exver = self._read_version_file()
+        self.make = self._which_make()
 
     def set_executable_links(self, otpver, exver):
         with self._change_directory(self.bin):
@@ -68,81 +77,106 @@ class NectarVM (object):
 
     ## ERLANG METHODS
 
-    def download_erlang(self, version=LATEST):
-        outfile, url = self._interpret_version('erlang', version)
-        if os.path.isfile(outfile):
-            return outfile
-        tarfile = self._download(outfile, url)
-        return tarfile
+    def download_erlang(self, version=OTP_LATEST):
+        return self._download('erlang', version)
 
     def build_erlang(self, version, jobs):
-        if version == self.LATEST:
-            version = self.VERSIONS['erlang'][-1][0]
-        tarfile = os.path.join(self.dnlds, 'otp-OTP-' + version + '.tar')
+        # make directories
         outdir = os.path.join(self.build, version)
-        try:
-            os.mkdir(outdir)
-            os.mkdir(os.path.join(outdir, 'local'))
-        except OSError as exc:
-            if exc.errno != errno.EEXIST:
-                raise
+        self._mkdir(outdir)
+        self._mkdir(outdir, 'local')
 
         # return if Erlang has already been installed
         if glob.glob(os.path.join(outdir, 'local', '*')):
             return
 
-        subprocess.check_call(['tar', 'xzvf', tarfile, '--directory', outdir])
+        # untar and make
+        tarfile = os.path.join(self.dnlds, 'otp-OTP-' + version + '.tar')
         build_dir = os.path.join(outdir, 'otp-OTP-' + version)
         prefix_path = os.path.join(outdir, 'local')
+        print('Extracting erlang %s...' % version)
+        self._run('tar', 'xzvf', tarfile, '--directory', outdir)
+        print('Building erlang %s -- this may take some time...' % version)
         with self._change_directory(build_dir):
             os.environ['ERL_TOP'] = build_dir
-            subprocess.check_call(['./otp_build', 'autoconf'])
-            subprocess.check_call(['./configure', '--prefix=%s' % prefix_path])
-            subprocess.check_call(['gmake', '-j%d' % jobs])
-            subprocess.check_call(['gmake', 'install'])
+            self._run('./otp_build', 'autoconf')
+            self._run('./configure', '--prefix=%s' % prefix_path)
+            self._run(self.make, '-j%d' % jobs)
+            self._run(self.make, 'install')
+
+    def remove_erlang(self, version, force=False, purge=False):
+        otp_path = os.path.join(self.build, version)
+        if not force:
+            elixirs = set(map(lambda x: x[0], self.VERSIONS['elixir']))
+            for elixir in glob.glob(os.path.join(otp_path, '*')):
+                if os.path.basename(elixir) in elixirs:
+                    raise NonEmptyDirWarning('Are you sure you want to remove '
+                            'OTP %s and all its dependents?' % version)
+
+        shutil.rmtree(otp_path)
+        if purge:
+            outfile, _ = self._interpret_version('elixir', version)
+            os.remove(outfile)
 
     ## ELIXIR METHODS
 
-    def download_elixir(self, version=LATEST):
-        outfile, url = self._interpret_version('elixir', version)
-        if os.path.isfile(outfile):
-            return outfile
-        tarfile = self._download(outfile, url)
-        return tarfile
+    def download_elixir(self, version=EX_LATEST):
+        return self._download('elixir', version)
 
     def build_elixir(self, version, otp_version, jobs):
-        if version == self.LATEST:
-            version = self.VERSIONS['elixir'][-1][0]
-        if otp_version == self.LATEST:
-            otp_version = self.VERSIONS['erlang'][-1][0]
-
         self._ensure_erlang(otp_version, jobs)
-        tarfile = os.path.join(self.dnlds, 'elixir-' + version + '.tar')
+
+        # make directories
         outdir = os.path.join(self.build, otp_version, version)
-        try:
-            os.mkdir(outdir)
-            os.mkdir(os.path.join(outdir, 'local'))
-            os.mkdir(os.path.join(outdir, 'local', 'bin'))
-        except OSError as exc:
-            if exc.errno != errno.EEXIST:
-                raise
+        self._mkdir(outdir)
+        self._mkdir(outdir, 'local')
+        self._mkdir(outdir, 'local', 'bin')
 
         # return if Elixir has already been installed
         if glob.glob(os.path.join(outdir, 'local', 'bin', '*')):
             return
 
-        subprocess.check_call(['tar', 'xzvf', tarfile, '--directory', outdir])
+        # untar and make
+        tarfile = os.path.join(self.dnlds, 'elixir-' + version + '.tar')
+        print('Extracting elixir %s...' % version)
+        self._run('tar', 'xzvf', tarfile, '--directory', outdir)
+        print('Building elixir %s -- this may take some time...' % version)
         build_dir = os.path.join(outdir, 'elixir-' + version)
         otp_path = os.path.join(self.build, otp_version, 'local', 'bin')
         with self._change_directory(build_dir):
             os.environ['PATH'] = otp_path + ':' + os.environ['PATH']
-            subprocess.check_call(['gmake', '-j%d' % jobs])
+            self._run(self.make, '-j%d' % jobs)
 
+        # install
         with self._change_directory(os.path.join(outdir, 'local', 'bin')):
             for tool in ('elixir', 'elixirc', 'iex', 'mix'):
                 os.symlink(os.path.join(build_dir, 'bin', tool), tool)
 
+    def remove_elixir(self, version, otp_version, purge=False):
+        shutil.rmtree(os.path.join(self.build, otp_version, version))
+        if purge:
+            outfile, _ = self._interpret_version('elixir', version)
+            os.remove(outfile)
+
     ## PRIVATE
+
+    def _mkdir(self, *dirs):
+        try:
+            os.mkdir(os.path.join(*dirs))
+        except OSError as exc:
+            if exc.errno != errno.EEXIST:
+                raise
+
+    def _run(self, *command):
+        with open(self.logfile, 'a') as log:
+            print(' '.join(command), file=log)
+            subprocess.check_call(command, stdout=log, stderr=log)
+
+    def _which_make(self):
+        if platform.system() == 'FreeBSD':
+            return 'gmake'
+        else:
+            return 'make'
 
     def _symlink_executables(self, directory):
         for exe in glob.glob(os.path.join(directory, '*')):
@@ -152,15 +186,11 @@ class NectarVM (object):
             os.symlink(exe, name)
 
     def _make_nectar_dir(self):
-        try:
-            os.mkdir(self.HOME)
-            os.mkdir(os.path.join(self.HOME, 'downloads'))
-            os.mkdir(os.path.join(self.HOME, 'build'))
-            os.mkdir(os.path.join(self.HOME, 'bin'))
-
-        except OSError as exc:
-            if exc.errno != errno.EEXIST:
-                raise
+        self._mkdir(self.HOME)
+        self._mkdir(self.HOME, 'downloads')
+        self._mkdir(self.HOME, 'build')
+        self._mkdir(self.HOME, 'bin')
+        self._mkdir(self.HOME, 'logs')
 
     def _read_version_file(self):
         version_file = os.path.join(self.HOME, 'version.json')
@@ -178,12 +208,9 @@ class NectarVM (object):
             json.dump({'erlang': erlang, 'elixir': elixir}, f)
 
     def _interpret_version(self, tool, version):
-        if version == self.LATEST:
-            res = [self.VERSIONS[tool][-1]]
-        else:
-            res = list(filter(lambda x: x[0] == version, self.VERSIONS[tool]))
-            if not res:
-                raise BadVersion('%s %s is not valid' % (tool, version))
+        res = list(filter(lambda x: x[0] == version, self.VERSIONS[tool]))
+        if not res:
+            raise BadVersion('%s %s is not valid' % (tool, version))
 
         version, url = res[0]
         if tool == 'erlang':
@@ -192,8 +219,17 @@ class NectarVM (object):
             tarfile = 'elixir-' + version + '.tar'
         return os.path.join(self.dnlds, tarfile), url
 
-    def _download(self, outfile, url):
-        response = urllib2.urlopen(url, cafile='/usr/local/share/certs/ca-root-nss.crt')
+    def _download(self, tool, version):
+        outfile, url = self._interpret_version(tool, version)
+        if os.path.isfile(outfile):
+            return outfile
+
+        print('Downloading %s %s...' % (tool, version))
+        if platform.system() == 'FreeBSD':
+            response = urllib2.urlopen(url, cafile='/usr/local/share/certs/ca-root-nss.crt')
+        else:
+            response = urllib2.urlopen(url)
+
         with open(outfile, 'w') as f:
             f.write(response.read())
         return outfile
