@@ -171,6 +171,7 @@ class VersionManager (object):
     def _run(self, *command):
         with open(self.logfile, 'a') as log:
             print(' '.join(command), file=log)
+            log.flush()
             subprocess.check_call(command, stdout=log, stderr=log)
 
     def _which_make(self):

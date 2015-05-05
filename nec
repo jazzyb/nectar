@@ -3,9 +3,30 @@
 from __future__ import print_function
 from nectar import VersionManager
 
-def options():
-    usage = '%(prog)s [help | list | install | use | remove] <arguments>'
-    parser = argparse.ArgumentParser(usage=usage)
+import argparse
+import multiprocessing
+import pkg_resources
+import sys
+
+def usage():
+    print('%s COMMAND' % sys.argv[0])
+    print('    help | -h\t\tshow this help message and exit\n'
+          '    list | ls\t\tlist the available Elixir/OTP versions\n'
+          '    install\t\tinstall a particular Elixir/OTP version\n'
+          '    use\t\t\tset the Erlang and Elixir commands to use\n'
+          '    remove | rm\t\tremove an Elixir version\n'
+          '    version | -v | -V\tshow nectar version and exit')
+
+def list_options():
+    parser = argparse.ArgumentParser(usage = '%(prog)s (list | ls)')
+    return parser
+
+def list_versions(nectar, args):
+    list_options().parse_args(args)
+    nectar.list_versions()
+
+def install_options():
+    parser = argparse.ArgumentParser(usage = '%(prog)s install OPTIONS')
     parser.add_argument('-o', '--otp-version',
                         default = VersionManager.OTP_LATEST,
                         help = 'Erlang version')
@@ -16,67 +37,77 @@ def options():
                         default = multiprocessing.cpu_count(),
                         type = int,
                         help = 'Number of build jobs to run in parallel')
-    parser.add_argument('-f', '--force',
-                        default = False,
-                        action = 'store_true',
-                        help = 'Force the removal of an OTP directory')
-    parser.add_argument('-p', '--purge',
-                        default = False,
-                        action = 'store_true',
-                        help = 'Remove the source tarfile')
     return parser
 
-def usage(parser):
-    parser.print_help()
+def install(nectar, args):
+    args = install_options().parse_args(args)
+    nectar.download_erlang(args.otp_version)
+    nectar.download_elixir(args.elixir_version)
+    nectar.build_elixir(args.elixir_version, args.otp_version, args.jobs)
 
-def list_versions():
-    VersionManager().list_versions()
+def use_options():
+    parser = argparse.ArgumentParser(usage = '%(prog)s use OPTIONS')
+    parser.add_argument('-o', '--otp-version',
+                        default = VersionManager.OTP_LATEST,
+                        help = 'Erlang version')
+    parser.add_argument('-x', '--elixir-version',
+                        default = VersionManager.EX_LATEST,
+                        help = 'Elixir version')
+    return parser
 
-def install(otp_version, elixir_version, jobs):
-    nectar = VersionManager()
-    nectar.download_erlang(otp_version)
-    nectar.download_elixir(elixir_version)
-    nectar.build_elixir(elixir_version, otp_version, jobs)
+def use(nectar, args):
+    args = use_options().parse_args(args)
+    nectar.set_executable_links(args.otp_version, args.elixir_version)
 
-def use(otp_version, elixir_version):
-    nectar = VersionManager()
-    nectar.set_executable_links(otp_version, elixir_version)
+def remove_options():
+    parser = argparse.ArgumentParser(usage = '%(prog)s (remove | rm) OPTIONS')
+    parser.add_argument('-o', '--otp-version',
+                        default = VersionManager.OTP_LATEST,
+                        help = 'Erlang version')
+    parser.add_argument('-x', '--elixir-version',
+                        default = VersionManager.EX_LATEST,
+                        help = 'Elixir version')
+#    parser.add_argument('-f', '--force',
+#                        default = False,
+#                        action = 'store_true',
+#                        help = 'Force the removal of an OTP directory')
+#    parser.add_argument('-p', '--purge',
+#                        default = False,
+#                        action = 'store_true',
+#                        help = 'Remove the source tarfile')
+    return parser
 
-def remove(otp_version, elixir_version, force, purge):
-    nectar = VersionManager()
-    nectar.remove_elixir(elixir_version, otp_version, purge=purge)
+def remove(nectar, args):
+    args = remove_options().parse_args(args)
+    nectar.remove_elixir(args.elixir_version, args.otp_version)
 
-def main(command, argv):
-    parser = options()
-    args = parser.parse_args(argv[1:])
+def print_version():
+    print('Nectar', pkg_resources.get_distribution('nectar').version)
 
-    if command == 'help':
-        usage(parser)
-    elif command == 'list':
-        list_versions()
+def main(command, args):
+    vm = VersionManager()
+    if command == 'help' or command == '-h':
+        usage()
+    elif command == 'list' or command == 'ls':
+        list_versions(vm, args)
     elif command == 'install':
-        install(args.otp_version, args.elixir_version, args.jobs)
+        install(vm, args)
     elif command == 'use':
-        use(args.otp_version, args.elixir_version)
-    elif command == 'remove':
-        remove(args.otp_version, args.elixir_version, args.force, args.purge)
+        use(vm, args)
+    elif command == 'remove' or command == 'rm':
+        remove(vm, args)
+    elif command in ('version', '-v', '-V'):
+        print_version()
     else:
-        print('%s: error: unknown command', sys.argv[0])
+        print('%s: error: unknown command' % sys.argv[0], file=sys.stderr)
         usage()
         sys.exit(1)
 
 if __name__ == '__main__':
-    import argparse
-    import multiprocessing
-    import sys
-
     if len(sys.argv) < 2:
-        print('%s: error: must use one of the following commands' % sys.argv[0])
-        print('    help\n'
-              '    list\n'
-              '    install\n'
-              '    use\n'
-              '    remove')
+        print('%s: error: must use one of the following commands' % sys.argv[0],
+                file=sys.stderr)
+        usage()
         sys.exit(1)
 
-    main(sys.argv.pop(1), sys.argv)
+    main(sys.argv.pop(1), sys.argv[1:])
