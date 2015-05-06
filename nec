@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-from nectar import VersionManager
+from nectar import VersionManager, BadVersion, NonEmptyDirWarning
+from subprocess import CalledProcessError
 
 import argparse
 import multiprocessing
@@ -43,7 +44,13 @@ def install(nectar, args):
     args = install_options().parse_args(args)
     nectar.download_erlang(args.otp_version)
     nectar.download_elixir(args.elixir_version)
-    nectar.build_elixir(args.elixir_version, args.otp_version, args.jobs)
+    try:
+        nectar.build_elixir(args.elixir_version, args.otp_version, args.jobs)
+    except CalledProcessError as exc:
+        cmd = ' '.join(str(exc).split("'")[2:-2:2])
+        print('%s: error: failed to execute "%s"' % (sys.argv[0], cmd), file=sys.stderr)
+        print('see %s for more details' % nectar.logfile, file=sys.stderr)
+        sys.exit(1)
 
 def use_options():
     parser = argparse.ArgumentParser(usage = '%(prog)s use OPTIONS')
@@ -61,25 +68,48 @@ def use(nectar, args):
 
 def remove_options():
     parser = argparse.ArgumentParser(usage = '%(prog)s (remove | rm) OPTIONS')
-    parser.add_argument('-o', '--otp-version',
-                        default = VersionManager.OTP_LATEST,
-                        help = 'Erlang version')
-    parser.add_argument('-x', '--elixir-version',
-                        default = VersionManager.EX_LATEST,
-                        help = 'Elixir version')
-#    parser.add_argument('-f', '--force',
-#                        default = False,
-#                        action = 'store_true',
-#                        help = 'Force the removal of an OTP directory')
-#    parser.add_argument('-p', '--purge',
-#                        default = False,
-#                        action = 'store_true',
-#                        help = 'Remove the source tarfile')
+    parser.add_argument('-o', '--otp-version', default = None, help = 'Erlang version')
+    parser.add_argument('-x', '--elixir-version', default = None, help = 'Elixir version')
+    parser.add_argument('-f', '--force',
+                        default = False,
+                        action = 'store_true',
+                        help = 'Force the removal of an OTP directory')
+    parser.add_argument('-p', '--purge',
+                        default = False,
+                        action = 'store_true',
+                        help = 'Remove the source tarfile')
     return parser
 
+def read_input(prompt):
+    global input
+    try:
+        input = raw_input
+    except NameError:
+        pass
+    return input(prompt)
+
 def remove(nectar, args):
-    args = remove_options().parse_args(args)
-    nectar.remove_elixir(args.elixir_version, args.otp_version)
+    parser = remove_options()
+    args = parser.parse_args(args)
+    if args.elixir_version and not args.otp_version:
+        print('%s: error: must specify a version of OTP' % sys.argv[0])
+        sys.exit(1)
+
+    elif args.otp_version and not args.elixir_version:
+        try:
+            nectar.remove_erlang(args.otp_version, force=args.force, purge=args.purge)
+        except NonEmptyDirWarning as exc:
+            if read_input(str(exc) + ' [Y/n] ').lower() in ('y', 'ye', 'yes'):
+                nectar.remove_erlang(args.otp_version, force=True, purge=args.purge)
+            else:
+                print('Nothing removed.')
+
+    elif args.otp_version and args.elixir_version:
+        nectar.remove_elixir(args.elixir_version, args.otp_version, purge=args.purge)
+
+    else:
+        print('Nothing removed.')
+        parser.print_help()
 
 def print_version():
     print('Nectar', pkg_resources.get_distribution('nectar').version)
@@ -110,4 +140,8 @@ if __name__ == '__main__':
         usage()
         sys.exit(1)
 
-    main(sys.argv.pop(1), sys.argv[1:])
+    try:
+        main(sys.argv.pop(1), sys.argv[1:])
+    except BadVersion as exc:
+        print('%s: error: %s' % (sys.argv[0], str(exc)), file=sys.stderr)
+        sys.exit(1)

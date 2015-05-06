@@ -7,6 +7,7 @@ setup(name='nectar',
       author='Jason M Barnes',
       author_email='json.barnes@gmail.com',
       license='MIT',
+      requires=['six'],
       packages=['nectar'],
       scripts=['nec']
 )

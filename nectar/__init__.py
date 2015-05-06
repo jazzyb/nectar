@@ -1,4 +1,5 @@
 from __future__ import print_function
+from six.moves import urllib
 
 import contextlib
 import datetime
@@ -9,9 +10,12 @@ import os
 import platform
 import shutil
 import subprocess
-import urllib2
+
 
 class BadVersion (Exception):
+    pass
+
+class NonEmptyDirWarning (Exception):
     pass
 
 class VersionManager (object):
@@ -54,6 +58,7 @@ class VersionManager (object):
         self.make = self._which_make()
 
     def set_executable_links(self, otpver, exver):
+        self._check_versions(otp=otpver, ex=exver)
         with self._change_directory(self.bin):
             self._symlink_executables(os.path.join(self.build, otpver, 'local', 'bin'))
             self._symlink_executables(os.path.join(self.build, otpver, exver, 'local', 'bin'))
@@ -79,9 +84,12 @@ class VersionManager (object):
     ## ERLANG METHODS
 
     def download_erlang(self, version=OTP_LATEST):
+        self._check_versions(otp=version)
         return self._download('erlang', version)
 
     def build_erlang(self, version, jobs):
+        self._check_versions(otp=version)
+
         # make directories
         outdir = os.path.join(self.build, version)
         self._mkdir(outdir)
@@ -92,7 +100,7 @@ class VersionManager (object):
             return
 
         # untar and make
-        tarfile = os.path.join(self.dnlds, 'otp-OTP-' + version + '.tar')
+        tarfile = os.path.join(self.dnlds, 'otp-OTP-' + version + '.tar.gz')
         build_dir = os.path.join(outdir, 'otp-OTP-' + version)
         prefix_path = os.path.join(outdir, 'local')
         print('Extracting erlang %s...' % version)
@@ -106,7 +114,10 @@ class VersionManager (object):
             self._run(self.make, 'install')
 
     def remove_erlang(self, version, force=False, purge=False):
+        self._check_versions(otp=version)
         otp_path = os.path.join(self.build, version)
+        if not os.path.exists(otp_path):
+            raise BadVersion('erlang %s is not installed' % version)
         if not force:
             elixirs = set(map(lambda x: x[0], self.VERSIONS['elixir']))
             for elixir in glob.glob(os.path.join(otp_path, '*')):
@@ -116,15 +127,17 @@ class VersionManager (object):
 
         shutil.rmtree(otp_path)
         if purge:
-            outfile, _ = self._interpret_version('elixir', version)
+            outfile, _ = self._interpret_version('erlang', version)
             os.remove(outfile)
 
     ## ELIXIR METHODS
 
     def download_elixir(self, version=EX_LATEST):
+        self._check_versions(ex=version)
         return self._download('elixir', version)
 
     def build_elixir(self, version, otp_version, jobs):
+        self._check_versions(otp=otp_version, ex=version)
         self._ensure_erlang(otp_version, jobs)
 
         # make directories
@@ -138,7 +151,7 @@ class VersionManager (object):
             return
 
         # untar and make
-        tarfile = os.path.join(self.dnlds, 'elixir-' + version + '.tar')
+        tarfile = os.path.join(self.dnlds, 'elixir-' + version + '.tar.gz')
         print('Extracting elixir %s...' % version)
         self._run('tar', 'xzvf', tarfile, '--directory', outdir)
         print('Building elixir %s -- this may take some time...' % version)
@@ -154,6 +167,13 @@ class VersionManager (object):
                 os.symlink(os.path.join(build_dir, 'bin', tool), tool)
 
     def remove_elixir(self, version, otp_version, purge=False):
+        self._check_versions(otp=otp_version, ex=version)
+        otp_path = os.path.join(self.build, otp_version)
+        if not os.path.exists(otp_path):
+            raise BadVersion('erlang %s is not installed' % otp_version)
+        ex_path = os.path.join(otp_path, version)
+        if not os.path.exists(ex_path):
+            raise BadVersion('elixir %s is not installed' % version)
         shutil.rmtree(os.path.join(self.build, otp_version, version))
         if purge:
             outfile, _ = self._interpret_version('elixir', version)
@@ -216,9 +236,9 @@ class VersionManager (object):
 
         version, url = res[0]
         if tool == 'erlang':
-            tarfile = 'otp-OTP-' + version + '.tar'
+            tarfile = 'otp-OTP-' + version + '.tar.gz'
         else:
-            tarfile = 'elixir-' + version + '.tar'
+            tarfile = 'elixir-' + version + '.tar.gz'
         return os.path.join(self.dnlds, tarfile), url
 
     def _download(self, tool, version):
@@ -228,11 +248,11 @@ class VersionManager (object):
 
         print('Downloading %s %s...' % (tool, version))
         if platform.system() == 'FreeBSD':
-            response = urllib2.urlopen(url, cafile='/usr/local/share/certs/ca-root-nss.crt')
+            response = urllib.request.urlopen(url, cafile='/usr/local/share/certs/ca-root-nss.crt')
         else:
-            response = urllib2.urlopen(url)
+            response = urllib.request.urlopen(url)
 
-        with open(outfile, 'w') as f:
+        with open(outfile, 'wb') as f:
             f.write(response.read())
         return outfile
 
@@ -248,3 +268,9 @@ class VersionManager (object):
     def _ensure_erlang(self, version, jobs):
         self.download_erlang(version)
         self.build_erlang(version, jobs)
+
+    def _check_versions(self, otp=OTP_LATEST, ex=EX_LATEST):
+        if otp not in list(map(lambda x: x[0], self.VERSIONS['erlang'])):
+            raise BadVersion('erlang %s is not valid' % otp)
+        if ex not in list(map(lambda x: x[0], self.VERSIONS['elixir'])):
+            raise BadVersion('elixir %s is not valid' % ex)
