@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='nectar',
-      version='0.1.2',
+      version='0.1.3',
       description='Yet another Elixir/OTP version manager',
       url='https://github.com/jazzyb/nectar',
       author='Jason M Barnes',
