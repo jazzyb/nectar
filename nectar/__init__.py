@@ -36,6 +36,8 @@ class VersionManager (object):
             ('17.5.5', 'https://github.com/erlang/otp/archive/OTP-17.5.5.tar.gz'),
             ('17.5.6', 'https://github.com/erlang/otp/archive/OTP-17.5.6.tar.gz'),
             ('18.0', 'https://github.com/erlang/otp/archive/OTP-18.0.tar.gz'),
+            ('18.0.1', 'https://github.com/erlang/otp/archive/OTP-18.0.1.tar.gz'),
+            ('18.0.2', 'https://github.com/erlang/otp/archive/OTP-18.0.2.tar.gz'),
         ],
 
         'elixir': [
