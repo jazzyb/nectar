@@ -49,6 +49,7 @@ class VersionManager (object):
             ('1.0.4', 'https://github.com/elixir-lang/elixir/archive/v1.0.4.tar.gz'),
             ('1.0.5', 'https://github.com/elixir-lang/elixir/archive/v1.0.5.tar.gz'),
             ('1.1.0-beta', 'https://github.com/elixir-lang/elixir/archive/v1.1.0-beta.tar.gz'),
+            ('1.1.0-rc.0', 'https://github.com/elixir-lang/elixir/archive/v1.1.0-rc.0.tar.gz'),
         ]
     }
 
