@@ -21,13 +21,6 @@ class NonEmptyDirWarning (Exception):
 class VersionManager (object):
     VERSIONS = {
         'erlang': [
-            ('17.3',   'https://github.com/erlang/otp/archive/OTP-17.3.tar.gz'),
-            ('17.3.1', 'https://github.com/erlang/otp/archive/OTP-17.3.1.tar.gz'),
-            ('17.3.2', 'https://github.com/erlang/otp/archive/OTP-17.3.2.tar.gz'),
-            ('17.3.3', 'https://github.com/erlang/otp/archive/OTP-17.3.3.tar.gz'),
-            ('17.3.4', 'https://github.com/erlang/otp/archive/OTP-17.3.4.tar.gz'),
-            ('17.4',   'https://github.com/erlang/otp/archive/OTP-17.4.tar.gz'),
-            ('17.4.1', 'https://github.com/erlang/otp/archive/OTP-17.4.1.tar.gz'),
             ('17.5',   'https://github.com/erlang/otp/archive/OTP-17.5.tar.gz'),
             ('17.5.1', 'https://github.com/erlang/otp/archive/OTP-17.5.1.tar.gz'),
             ('17.5.2', 'https://github.com/erlang/otp/archive/OTP-17.5.2.tar.gz'),
@@ -49,8 +42,6 @@ class VersionManager (object):
             ('1.0.3', 'https://github.com/elixir-lang/elixir/archive/v1.0.3.tar.gz'),
             ('1.0.4', 'https://github.com/elixir-lang/elixir/archive/v1.0.4.tar.gz'),
             ('1.0.5', 'https://github.com/elixir-lang/elixir/archive/v1.0.5.tar.gz'),
-            ('1.1.0-beta', 'https://github.com/elixir-lang/elixir/archive/v1.1.0-beta.tar.gz'),
-            ('1.1.0-rc.0', 'https://github.com/elixir-lang/elixir/archive/v1.1.0-rc.0.tar.gz'),
             ('1.1.0', 'https://github.com/elixir-lang/elixir/archive/v1.1.0.tar.gz'),
         ]
     }
