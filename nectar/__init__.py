@@ -36,6 +36,7 @@ class VersionManager (object):
             ('18.2', 'https://github.com/erlang/otp/archive/OTP-18.2.tar.gz'),
             ('18.2.1', 'https://github.com/erlang/otp/archive/OTP-18.2.1.tar.gz'),
             ('18.2.2', 'https://github.com/erlang/otp/archive/OTP-18.2.2.tar.gz'),
+            ('19.0.5', 'https://github.com/erlang/otp/archive/OTP-19.0.5.tar.gz'),
         ],
 
         'elixir': [
@@ -48,6 +49,7 @@ class VersionManager (object):
             ('1.1.0', 'https://github.com/elixir-lang/elixir/archive/v1.1.0.tar.gz'),
             ('1.2.0', 'https://github.com/elixir-lang/elixir/archive/v1.2.0.tar.gz'),
             ('1.2.1', 'https://github.com/elixir-lang/elixir/archive/v1.2.1.tar.gz'),
+            ('1.3.2', 'https://github.com/elixir-lang/elixir/archive/v1.3.2.tar.gz'),
         ]
     }
 
